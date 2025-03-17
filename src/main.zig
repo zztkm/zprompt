@@ -83,6 +83,29 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     return error.GitBranchNotFound;
 }
 
+fn getPosixHome() ![]const u8 {
+    const home = std.posix.getenv("HOME");
+    if (home == null) {
+        return error.HomeNotFound;
+    }
+    return home;
+}
+
+fn getWindowsHome(allocator: std.mem.Allocator) ![]const u8 {
+    const value = try std.process.getEnvVarOwned(allocator, "USERPROFILE");
+    defer allocator.free(value);
+    return try std.mem.Allocator.dupe(allocator, u8, value);
+}
+
+fn getHome(allocator: std.mem.Allocator) ![]const u8 {
+    return switch (builtin.os.tag) {
+        .windows => getWindowsHome(allocator),
+        .linux => getPosixHome(),
+        .macos => getPosixHome(),
+        else => error.NotImplemented,
+    };
+}
+
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     const allocator, const is_debug = a: {
@@ -104,10 +127,17 @@ pub fn main() !void {
     // TODO(zztkm): メモリ管理がよくわかっていないので、あとで調べる
     // 今は main 関数内で defer で allocator.free しているので、特にメモリリークが発生することはなさそうだけど
     // これで良いのかわかってない
+    const home = getHome(allocator) catch "";
+    defer allocator.free(home);
     const cwd = getCWD(allocator) catch "";
     defer allocator.free(cwd);
     if (cwd.len != 0) {
-        _ = try writer.print("{s} ", .{cwd});
+        // cwd の先頭が home と一致する場合は "~" に置き換える
+        if (std.mem.startsWith(u8, cwd, home)) {
+            _ = try writer.print("~{s} ", .{cwd[home.len..]});
+        } else {
+            _ = try writer.print("{s} ", .{cwd});
+        }
     }
 
     const git_branch = getGitBranch(allocator) catch "";
