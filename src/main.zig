@@ -75,6 +75,7 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     var lines = std.mem.tokenizeScalar(u8, result.stdout, '\n');
     while (lines.next()) |line| {
         if (std.mem.startsWith(u8, line, "On branch ")) {
+            // line はいずれ解放されてしまうので、line[10..] のメモリをコピーして返す
             const branch = try std.mem.Allocator.dupe(allocator, u8, line[10..]); // Skip "On branch "
             return branch;
         }
