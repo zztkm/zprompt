@@ -53,6 +53,35 @@ fn getCWD(allocator: std.mem.Allocator) ![]const u8 {
     return cwd_path;
 }
 
+/// Git のブランチ名を取得する関数
+// オリジナルのソースコードは以下の URL にあり、MIT ライセンスで公開されている
+// https://github.com/dbushell/zigbar/blob/ee1c5800c4b45a424d3dc1aa4004f0872d984302/src/Git.zig
+fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "git", "status" },
+    });
+    defer {
+        allocator.free(result.stderr);
+        allocator.free(result.stdout);
+    }
+    if (result.term != .Exited) {
+        return error.GitCommandFailed;
+    }
+
+    // Iterate stdout lines
+    // Windows でも \n で良いのだっけ...
+    // だめそうなら \r\n にする
+    var lines = std.mem.tokenizeScalar(u8, result.stdout, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "On branch ")) {
+            const branch = try std.mem.Allocator.dupe(allocator, u8, line[10..]); // Skip "On branch "
+            return branch;
+        }
+    }
+    return error.GitBranchNotFound;
+}
+
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     const allocator, const is_debug = a: {
@@ -76,7 +105,15 @@ pub fn main() !void {
     // これで良いのかわかってない
     const cwd = getCWD(allocator) catch "";
     defer allocator.free(cwd);
-    _ = try writer.print("{s} ", .{cwd});
+    if (cwd.len != 0) {
+        _ = try writer.print("{s} ", .{cwd});
+    }
+
+    const git_branch = getGitBranch(allocator) catch "";
+    defer allocator.free(git_branch);
+    if (git_branch.len != 0) {
+        _ = try writer.print("({s}) ", .{git_branch});
+    }
 
     _ = try writer.write("🦀 ");
 }
