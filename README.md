@@ -7,7 +7,11 @@
 ## Build
 
 ```bash
+# Debug build
 zig build
+
+# Release Build
+zig build -Doptimize=ReleaseFast
 ```
 
 出力先 `zig-out/bin/zprompt` (Windows `zig-out\bin\zprompt.exe`)
