@@ -146,5 +146,8 @@ pub fn main() !void {
         _ = try writer.print("({s}) ", .{git_branch});
     }
 
+    // TODO(zztkm): ↓の $ 部分を好きな文字列に置き換えられるようにする
     _ = try writer.write("🦀 ");
+
+    // TODO(zztkm): プロンプトのフォーマットをカスタムできるようにする
 }
