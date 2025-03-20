@@ -39,6 +39,7 @@ fn getPosixHostName() ![]const u8 {
 fn getHostName() ![]const u8 {
     return switch (builtin.os.tag) {
         // TODO(zztkm): Windows でのホスト名取得方法を調査して実装する
+        // 参考: https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-gethostname
         .windows => error.NotImplemented,
         .linux => getPosixHostName(),
         .macos => getPosixHostName(),
@@ -72,12 +73,16 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     // Iterate stdout lines
     var lines = std.mem.tokenizeScalar(u8, result.stdout, '\n');
     while (lines.next()) |line| {
-        // 優先度1: ブランチ名を確認
         if (std.mem.startsWith(u8, line, "On branch ")) {
-            const branch = try std.mem.Allocator.dupe(allocator, u8, line[10..]); // Skip "On branch "
-            return branch;
+            if (line.len >= 10) {
+                const branch = try std.mem.Allocator.dupe(allocator, u8, line[10..]); // Skip "On branch "
+                return branch;
+            }
+            if (line.len >= 17) {
+                const tag = try std.mem.Allocator.dupe(allocator, u8, line[17..]); // Skip "HEAD detached at "
+                return tag;
+            }
         }
-        // 優先度2: タグ名を確認
         if (std.mem.startsWith(u8, line, "HEAD detached at ")) {
             const tag = try std.mem.Allocator.dupe(allocator, u8, line[17..]); // Skip "HEAD detached at "
             return tag;
