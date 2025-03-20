@@ -53,7 +53,7 @@ fn getCWD(allocator: std.mem.Allocator) ![]const u8 {
     return cwd_path;
 }
 
-/// Git のブランチ名を取得する関数
+/// Git のブランチ名 or タグ名を取得する関数
 // オリジナルのソースコードは以下の URL にあり、MIT ライセンスで公開されている
 // https://github.com/dbushell/zigbar/blob/ee1c5800c4b45a424d3dc1aa4004f0872d984302/src/Git.zig
 fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
@@ -70,14 +70,17 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     }
 
     // Iterate stdout lines
-    // Windows でも \n で良いのだっけ...
-    // だめそうなら \r\n にする
     var lines = std.mem.tokenizeScalar(u8, result.stdout, '\n');
     while (lines.next()) |line| {
+        // 優先度1: ブランチ名を確認
         if (std.mem.startsWith(u8, line, "On branch ")) {
-            // line はいずれ解放されてしまうので、line[10..] のメモリをコピーして返す
             const branch = try std.mem.Allocator.dupe(allocator, u8, line[10..]); // Skip "On branch "
             return branch;
+        }
+        // 優先度2: タグ名を確認
+        if (std.mem.startsWith(u8, line, "HEAD detached at ")) {
+            const tag = try std.mem.Allocator.dupe(allocator, u8, line[17..]); // Skip "HEAD detached at "
+            return tag;
         }
     }
     return error.GitBranchNotFound;
