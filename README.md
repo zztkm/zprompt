@@ -6,6 +6,8 @@
 
 ## Build
 
+Zig version 0.14.0 でビルドを確認しています。
+
 ```bash
 # Debug build
 zig build
