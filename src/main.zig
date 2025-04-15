@@ -92,11 +92,20 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
 }
 
 fn getPosixHome() ![]const u8 {
-    const home = std.posix.getenv("HOME");
-    if (home == null) {
+    const home_path = std.posix.getenv("HOME");
+    if (home_path == null) {
         return error.HomeNotFound;
     }
-    return home;
+    if (home_path) |path| {
+        // 値が存在する場合 (null でない場合)
+        if (path.len == 0) {
+            // パスが空文字列の場合のエラー処理 (必要であれば)
+            return error.HomeIsEmpty;
+        }
+        return path;
+    } else {
+        return error.HomeNotFound;
+    }
 }
 
 fn getWindowsHome(allocator: std.mem.Allocator) ![]const u8 {
