@@ -58,9 +58,14 @@ fn getCWD(allocator: std.mem.Allocator) ![]const u8 {
 // オリジナルのソースコードは以下の URL にあり、MIT ライセンスで公開されている
 // https://github.com/dbushell/zigbar/blob/ee1c5800c4b45a424d3dc1aa4004f0872d984302/src/Git.zig
 fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
+    var env = try std.process.getEnvMap(allocator);
+    // git status の出力を英語にするために LC_MESSAGES を C に設定
+    // TODO(zztkm): Windows での動作確認
+    try env.put("LC_MESSAGES", "C");
     const result = try std.process.Child.run(.{
         .allocator = allocator,
         .argv = &.{ "git", "status" },
+        .env_map = &env,
     });
     defer {
         allocator.free(result.stderr);
