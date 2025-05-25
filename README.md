@@ -16,9 +16,18 @@ zig build -Doptimize=ReleaseFast
 
 出力先 `zig-out/bin/zprompt` (Windows `zig-out\bin\zprompt.exe`)
 
-このプログラムを PATH の通ったディレクトリに配置して、シェルのプロンプト設定用プログラムとして呼び出すように設定すると利用可能です。
-
 ## Settings
+
+この例では zprompt が PATH に含まれていることを前提とします。 
+
+### zsh
+
+以下のように `.zshrc` に PROMPT を設定してください。
+
+```zsh
+setopt PROMPT_SUBST
+PROMPT='$(zprompt)'
+```
 
 ### Nushell
 
