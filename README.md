@@ -52,6 +52,26 @@ export-env { load-env {
 }}
 ```
 
+## 環境変数
+
+### ZPROMPT_ICON
+
+プロンプトのアイコンをカスタマイズできます。デフォルトは `🦀` です。(Zig なのに...)
+
+以下は zsh の例です。
+
+```bash
+# ドルマークに変更
+export ZPROMPT_ICON="$"
+# 恐竜の絵文字に変更
+export ZPROMPT_ICON="🦖"
+
+# 他の例
+export ZPROMPT_ICON=">"
+export ZPROMPT_ICON="λ"
+export ZPROMPT_ICON="▶"
+```
+
 ## Notes
 
 Inspired by [Zigbar](https://github.com/dbushell/zigbar) and [Starship](https://starship.rs/).
