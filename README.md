@@ -4,7 +4,7 @@
 
 ## Build
 
-Zig version 0.14.0 でビルドを確認しています。
+Zig version 0.14.1 でビルドを確認しています。
 
 ```bash
 # Debug build
@@ -55,3 +55,4 @@ export-env { load-env {
 ## Notes
 
 Inspired by [Zigbar](https://github.com/dbushell/zigbar) and [Starship](https://starship.rs/).
+
