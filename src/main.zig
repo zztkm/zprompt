@@ -128,6 +128,14 @@ fn getHome(allocator: std.mem.Allocator) ![]const u8 {
     };
 }
 
+fn getPromptIcon(allocator: std.mem.Allocator) ![]const u8 {
+    return switch (builtin.os.tag) {
+        .windows => std.process.getEnvVarOwned(allocator, "ZPROMPT_ICON") catch try allocator.dupe(u8, "🦀"),
+        .linux, .macos => try allocator.dupe(u8, std.posix.getenv("ZPROMPT_ICON") orelse "🦀"),
+        else => try allocator.dupe(u8, "🦀"),
+    };
+}
+
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     const allocator, const is_debug = a: {
@@ -168,8 +176,10 @@ pub fn main() !void {
         _ = try writer.print("({s}) ", .{git_branch});
     }
 
-    // TODO(zztkm): ↓の $ 部分を好きな文字列に置き換えられるようにする
-    _ = try writer.write("🦀 ");
+    // プロンプトアイコンを環境変数 ZPROMPT_ICON から取得 (デフォルト: 🦀)
+    const prompt_icon = try getPromptIcon(allocator);
+    defer allocator.free(prompt_icon);
+    _ = try writer.print("{s} ", .{prompt_icon});
 
     // TODO(zztkm): プロンプトのフォーマットをカスタムできるようにする
 }
