@@ -29,6 +29,16 @@ zig build test
 make build
 ```
 
+**Run the executable directly:**
+```bash
+./zig-out/bin/zprompt
+```
+
+**Test with custom icon:**
+```bash
+ZPROMPT_ICON="$" ./zig-out/bin/zprompt
+```
+
 ## Project Architecture
 
 This is a shell prompt utility written in Zig that displays information about the current directory, git status, and custom prompt symbols. The executable outputs a formatted prompt string for shell integration.
@@ -45,7 +55,7 @@ This is a shell prompt utility written in Zig that displays information about th
 2. Get home directory and current working directory
 3. Display current path (with `~` substitution)
 4. Get and display git branch/tag if in git repository
-5. Output custom prompt symbol (🦀)
+5. Output custom prompt symbol (🦀 by default, customizable via ZPROMPT_ICON environment variable)
 
 **Memory management**: Uses different allocators based on build mode (DebugAllocator for Debug/ReleaseSafe, smp_allocator for release builds).
 
