@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const DEFAULT_PROMPT_ICON = "🦀";
+
 /// UTF8ConsoleOutput は Windows のコンソールで UTF-8 を使うための機能を持った構造体です
 ///
 /// 参考
@@ -130,9 +132,9 @@ fn getHome(allocator: std.mem.Allocator) ![]const u8 {
 
 fn getPromptIcon(allocator: std.mem.Allocator) ![]const u8 {
     return switch (builtin.os.tag) {
-        .windows => std.process.getEnvVarOwned(allocator, "ZPROMPT_ICON") catch try allocator.dupe(u8, "🦀"),
-        .linux, .macos => try allocator.dupe(u8, std.posix.getenv("ZPROMPT_ICON") orelse "🦀"),
-        else => try allocator.dupe(u8, "🦀"),
+        .windows => std.process.getEnvVarOwned(allocator, "ZPROMPT_ICON") catch try allocator.dupe(u8, DEFAULT_PROMPT_ICON),
+        .linux, .macos => try allocator.dupe(u8, std.posix.getenv("ZPROMPT_ICON") orelse DEFAULT_PROMPT_ICON),
+        else => try allocator.dupe(u8, DEFAULT_PROMPT_ICON),
     };
 }
 
