@@ -3,6 +3,31 @@ const builtin = @import("builtin");
 
 const DEFAULT_PROMPT_ICON = "🦀";
 
+// ANSI color codes
+const ANSI_RESET = "\x1b[0m";
+const ANSI_BOLD = "\x1b[1m";
+const ANSI_DIM = "\x1b[2m";
+
+// Regular colors
+const ANSI_BLACK = "\x1b[30m";
+const ANSI_RED = "\x1b[31m";
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_YELLOW = "\x1b[33m";
+const ANSI_BLUE = "\x1b[34m";
+const ANSI_MAGENTA = "\x1b[35m";
+const ANSI_CYAN = "\x1b[36m";
+const ANSI_WHITE = "\x1b[37m";
+
+// Bright colors
+const ANSI_BRIGHT_BLACK = "\x1b[90m";
+const ANSI_BRIGHT_RED = "\x1b[91m";
+const ANSI_BRIGHT_GREEN = "\x1b[92m";
+const ANSI_BRIGHT_YELLOW = "\x1b[93m";
+const ANSI_BRIGHT_BLUE = "\x1b[94m";
+const ANSI_BRIGHT_MAGENTA = "\x1b[95m";
+const ANSI_BRIGHT_CYAN = "\x1b[96m";
+const ANSI_BRIGHT_WHITE = "\x1b[97m";
+
 /// UTF8ConsoleOutput は Windows のコンソールで UTF-8 を使うための機能を持った構造体です
 ///
 /// 参考
@@ -61,6 +86,7 @@ fn getCWD(allocator: std.mem.Allocator) ![]const u8 {
 // https://github.com/dbushell/zigbar/blob/ee1c5800c4b45a424d3dc1aa4004f0872d984302/src/Git.zig
 fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     var env = try std.process.getEnvMap(allocator);
+    defer env.deinit();
     // git status の出力を英語にするために LC_MESSAGES を C に設定
     // TODO(zztkm): Windows での動作確認
     try env.put("LC_MESSAGES", "C");
@@ -98,7 +124,7 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     return error.GitBranchNotFound;
 }
 
-fn getPosixHome() ![]const u8 {
+fn getPosixHome(allocator: std.mem.Allocator) ![]const u8 {
     const home_path = std.posix.getenv("HOME");
     if (home_path == null) {
         return error.HomeNotFound;
@@ -109,7 +135,7 @@ fn getPosixHome() ![]const u8 {
             // パスが空文字列の場合のエラー処理 (必要であれば)
             return error.HomeIsEmpty;
         }
-        return path;
+        return try allocator.dupe(u8, path);
     } else {
         return error.HomeNotFound;
     }
@@ -124,8 +150,8 @@ fn getWindowsHome(allocator: std.mem.Allocator) ![]const u8 {
 fn getHome(allocator: std.mem.Allocator) ![]const u8 {
     return switch (builtin.os.tag) {
         .windows => getWindowsHome(allocator),
-        .linux => getPosixHome(),
-        .macos => getPosixHome(),
+        .linux => getPosixHome(allocator),
+        .macos => getPosixHome(allocator),
         else => error.NotImplemented,
     };
 }
@@ -136,6 +162,66 @@ fn getPromptIcon(allocator: std.mem.Allocator) ![]const u8 {
         .linux, .macos => try allocator.dupe(u8, std.posix.getenv("ZPROMPT_ICON") orelse DEFAULT_PROMPT_ICON),
         else => try allocator.dupe(u8, DEFAULT_PROMPT_ICON),
     };
+}
+
+fn parseColorName(name: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, name, "black")) return ANSI_BLACK;
+    if (std.mem.eql(u8, name, "red")) return ANSI_RED;
+    if (std.mem.eql(u8, name, "green")) return ANSI_GREEN;
+    if (std.mem.eql(u8, name, "yellow")) return ANSI_YELLOW;
+    if (std.mem.eql(u8, name, "blue")) return ANSI_BLUE;
+    if (std.mem.eql(u8, name, "magenta")) return ANSI_MAGENTA;
+    if (std.mem.eql(u8, name, "cyan")) return ANSI_CYAN;
+    if (std.mem.eql(u8, name, "white")) return ANSI_WHITE;
+    
+    if (std.mem.eql(u8, name, "bright_black")) return ANSI_BRIGHT_BLACK;
+    if (std.mem.eql(u8, name, "bright_red")) return ANSI_BRIGHT_RED;
+    if (std.mem.eql(u8, name, "bright_green")) return ANSI_BRIGHT_GREEN;
+    if (std.mem.eql(u8, name, "bright_yellow")) return ANSI_BRIGHT_YELLOW;
+    if (std.mem.eql(u8, name, "bright_blue")) return ANSI_BRIGHT_BLUE;
+    if (std.mem.eql(u8, name, "bright_magenta")) return ANSI_BRIGHT_MAGENTA;
+    if (std.mem.eql(u8, name, "bright_cyan")) return ANSI_BRIGHT_CYAN;
+    if (std.mem.eql(u8, name, "bright_white")) return ANSI_BRIGHT_WHITE;
+    
+    if (std.mem.eql(u8, name, "bold")) return ANSI_BOLD;
+    if (std.mem.eql(u8, name, "dim")) return ANSI_DIM;
+    if (std.mem.eql(u8, name, "reset")) return ANSI_RESET;
+    
+    return null;
+}
+
+fn getColor(allocator: std.mem.Allocator, env_var: []const u8) ![]const u8 {
+    const color_value = switch (builtin.os.tag) {
+        .windows => std.process.getEnvVarOwned(allocator, env_var) catch return try allocator.dupe(u8, ""),
+        .linux, .macos => blk: {
+            if (std.posix.getenv(env_var)) |value| {
+                break :blk try allocator.dupe(u8, value);
+            }
+            return try allocator.dupe(u8, "");
+        },
+        else => return try allocator.dupe(u8, ""),
+    };
+    defer allocator.free(color_value);
+    
+    // Check if it's a color name
+    if (parseColorName(color_value)) |color_code| {
+        return try allocator.dupe(u8, color_code);
+    }
+    
+    // Otherwise, assume it's a raw ANSI code
+    return try allocator.dupe(u8, color_value);
+}
+
+fn getDirectoryColor(allocator: std.mem.Allocator) ![]const u8 {
+    return getColor(allocator, "ZPROMPT_DIR_COLOR");
+}
+
+fn getGitColor(allocator: std.mem.Allocator) ![]const u8 {
+    return getColor(allocator, "ZPROMPT_GIT_COLOR");
+}
+
+fn getIconColor(allocator: std.mem.Allocator) ![]const u8 {
+    return getColor(allocator, "ZPROMPT_ICON_COLOR");
 }
 
 pub fn main() !void {
@@ -163,25 +249,34 @@ pub fn main() !void {
     defer allocator.free(home);
     const cwd = getCWD(allocator) catch "";
     defer allocator.free(cwd);
+    
+    // Get colors for each component
+    const dir_color = try getDirectoryColor(allocator);
+    defer allocator.free(dir_color);
+    const git_color = try getGitColor(allocator);
+    defer allocator.free(git_color);
+    const icon_color = try getIconColor(allocator);
+    defer allocator.free(icon_color);
+    
     if (cwd.len != 0) {
         // cwd の先頭が home と一致する場合は "~" に置き換える
         if (std.mem.startsWith(u8, cwd, home)) {
-            _ = try writer.print("~{s} ", .{cwd[home.len..]});
+            _ = try writer.print("{s}~{s}{s} ", .{ dir_color, cwd[home.len..], if (dir_color.len > 0) ANSI_RESET else "" });
         } else {
-            _ = try writer.print("{s} ", .{cwd});
+            _ = try writer.print("{s}{s}{s} ", .{ dir_color, cwd, if (dir_color.len > 0) ANSI_RESET else "" });
         }
     }
 
     const git_branch = getGitBranch(allocator) catch "";
     defer allocator.free(git_branch);
     if (git_branch.len != 0) {
-        _ = try writer.print("({s}) ", .{git_branch});
+        _ = try writer.print("{s}({s}){s} ", .{ git_color, git_branch, if (git_color.len > 0) ANSI_RESET else "" });
     }
 
     // プロンプトアイコンを環境変数 ZPROMPT_ICON から取得 (デフォルト: 🦀)
     const prompt_icon = try getPromptIcon(allocator);
     defer allocator.free(prompt_icon);
-    _ = try writer.print("{s} ", .{prompt_icon});
+    _ = try writer.print("{s}{s}{s} ", .{ icon_color, prompt_icon, if (icon_color.len > 0) ANSI_RESET else "" });
 
     // TODO(zztkm): プロンプトのフォーマットをカスタムできるようにする
 }

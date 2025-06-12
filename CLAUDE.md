@@ -39,6 +39,16 @@ make build
 ZPROMPT_ICON="$" ./zig-out/bin/zprompt
 ```
 
+**Test with colors (using color names):**
+```bash
+ZPROMPT_DIR_COLOR="blue" ZPROMPT_GIT_COLOR="green" ZPROMPT_ICON_COLOR="red" ./zig-out/bin/zprompt
+```
+
+**Test with colors (using raw ANSI codes):**
+```bash
+ZPROMPT_DIR_COLOR=$'\033[1;34m' ZPROMPT_GIT_COLOR=$'\033[0;32m' ZPROMPT_ICON_COLOR=$'\033[1;31m' ./zig-out/bin/zprompt
+```
+
 ## Project Architecture
 
 This is a shell prompt utility written in Zig that displays information about the current directory, git status, and custom prompt symbols. The executable outputs a formatted prompt string for shell integration.
@@ -56,6 +66,16 @@ This is a shell prompt utility written in Zig that displays information about th
 3. Display current path (with `~` substitution)
 4. Get and display git branch/tag if in git repository
 5. Output custom prompt symbol (🦀 by default, customizable via ZPROMPT_ICON environment variable)
+
+**Color customization:**
+- Supports ANSI color codes for customizing prompt appearance
+- Three environment variables control colors:
+  - `ZPROMPT_DIR_COLOR`: Colors the directory path
+  - `ZPROMPT_GIT_COLOR`: Colors the git branch/tag (including parentheses)
+  - `ZPROMPT_ICON_COLOR`: Colors the prompt icon
+- Accepts both color names (e.g., "blue", "bright_red") and raw ANSI escape codes
+- Available color names: black, red, green, yellow, blue, magenta, cyan, white (plus bright_ variants)
+- Special modifiers: bold, dim, reset
 
 **Memory management**: Uses different allocators based on build mode (DebugAllocator for Debug/ReleaseSafe, smp_allocator for release builds).
 
