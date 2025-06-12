@@ -15,6 +15,11 @@ setopt PROMPT_SUBST
 PROMPT='$(zprompt)'
 ```
 
+## 方針
+
+- 設定は環境変数で行う
+- Zig, Rust などのプロジェクトごとにアイコンを付ける機能はいれない
+
 ## Build
 
 Zig version 0.14.1 でビルドを確認しています。
