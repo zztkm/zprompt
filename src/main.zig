@@ -173,7 +173,7 @@ fn parseColorName(name: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, name, "magenta")) return ANSI_MAGENTA;
     if (std.mem.eql(u8, name, "cyan")) return ANSI_CYAN;
     if (std.mem.eql(u8, name, "white")) return ANSI_WHITE;
-    
+
     if (std.mem.eql(u8, name, "bright_black")) return ANSI_BRIGHT_BLACK;
     if (std.mem.eql(u8, name, "bright_red")) return ANSI_BRIGHT_RED;
     if (std.mem.eql(u8, name, "bright_green")) return ANSI_BRIGHT_GREEN;
@@ -182,11 +182,11 @@ fn parseColorName(name: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, name, "bright_magenta")) return ANSI_BRIGHT_MAGENTA;
     if (std.mem.eql(u8, name, "bright_cyan")) return ANSI_BRIGHT_CYAN;
     if (std.mem.eql(u8, name, "bright_white")) return ANSI_BRIGHT_WHITE;
-    
+
     if (std.mem.eql(u8, name, "bold")) return ANSI_BOLD;
     if (std.mem.eql(u8, name, "dim")) return ANSI_DIM;
     if (std.mem.eql(u8, name, "reset")) return ANSI_RESET;
-    
+
     return null;
 }
 
@@ -202,12 +202,12 @@ fn getColor(allocator: std.mem.Allocator, env_var: []const u8) ![]const u8 {
         else => return try allocator.dupe(u8, ""),
     };
     defer allocator.free(color_value);
-    
+
     // Check if it's a color name
     if (parseColorName(color_value)) |color_code| {
         return try allocator.dupe(u8, color_code);
     }
-    
+
     // Otherwise, assume it's a raw ANSI code
     return try allocator.dupe(u8, color_value);
 }
@@ -249,7 +249,7 @@ pub fn main() !void {
     defer allocator.free(home);
     const cwd = getCWD(allocator) catch "";
     defer allocator.free(cwd);
-    
+
     // Get colors for each component
     const dir_color = try getDirectoryColor(allocator);
     defer allocator.free(dir_color);
@@ -257,7 +257,7 @@ pub fn main() !void {
     defer allocator.free(git_color);
     const icon_color = try getIconColor(allocator);
     defer allocator.free(icon_color);
-    
+
     if (cwd.len != 0) {
         // cwd の先頭が home と一致する場合は "~" に置き換える
         if (std.mem.startsWith(u8, cwd, home)) {
