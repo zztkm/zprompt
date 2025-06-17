@@ -15,6 +15,8 @@ setopt PROMPT_SUBST
 PROMPT='$(zprompt)'
 ```
 
+注意: カラーを設定する機能は zsh でのみ対応です。
+
 ## 方針
 
 - 設定は環境変数で行う

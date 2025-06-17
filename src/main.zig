@@ -224,6 +224,15 @@ fn getIconColor(allocator: std.mem.Allocator) ![]const u8 {
     return getColor(allocator, "ZPROMPT_ICON_COLOR");
 }
 
+/// zsh用のエスケープシーケンスラッパー関数
+/// ANSIエスケープシーケンスを %{ と %} で囲む
+fn wrapForZsh(allocator: std.mem.Allocator, escape_seq: []const u8) ![]const u8 {
+    if (escape_seq.len == 0) {
+        return try allocator.dupe(u8, "");
+    }
+    return try std.fmt.allocPrint(allocator, "%{{{s}%}}", .{escape_seq});
+}
+
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     const allocator, const is_debug = a: {
@@ -258,25 +267,35 @@ pub fn main() !void {
     const icon_color = try getIconColor(allocator);
     defer allocator.free(icon_color);
 
+    // Wrap colors for zsh
+    const wrapped_dir_color = try wrapForZsh(allocator, dir_color);
+    defer allocator.free(wrapped_dir_color);
+    const wrapped_git_color = try wrapForZsh(allocator, git_color);
+    defer allocator.free(wrapped_git_color);
+    const wrapped_icon_color = try wrapForZsh(allocator, icon_color);
+    defer allocator.free(wrapped_icon_color);
+    const wrapped_reset = try wrapForZsh(allocator, ANSI_RESET);
+    defer allocator.free(wrapped_reset);
+
     if (cwd.len != 0) {
         // cwd の先頭が home と一致する場合は "~" に置き換える
         if (std.mem.startsWith(u8, cwd, home)) {
-            _ = try writer.print("{s}~{s}{s} ", .{ dir_color, cwd[home.len..], if (dir_color.len > 0) ANSI_RESET else "" });
+            _ = try writer.print("{s}~{s}{s} ", .{ wrapped_dir_color, cwd[home.len..], if (dir_color.len > 0) wrapped_reset else "" });
         } else {
-            _ = try writer.print("{s}{s}{s} ", .{ dir_color, cwd, if (dir_color.len > 0) ANSI_RESET else "" });
+            _ = try writer.print("{s}{s}{s} ", .{ wrapped_dir_color, cwd, if (dir_color.len > 0) wrapped_reset else "" });
         }
     }
 
     const git_branch = getGitBranch(allocator) catch "";
     defer allocator.free(git_branch);
     if (git_branch.len != 0) {
-        _ = try writer.print("{s}({s}){s} ", .{ git_color, git_branch, if (git_color.len > 0) ANSI_RESET else "" });
+        _ = try writer.print("{s}({s}){s} ", .{ wrapped_git_color, git_branch, if (git_color.len > 0) wrapped_reset else "" });
     }
 
     // プロンプトアイコンを環境変数 ZPROMPT_ICON から取得 (デフォルト: 🦀)
     const prompt_icon = try getPromptIcon(allocator);
     defer allocator.free(prompt_icon);
-    _ = try writer.print("{s}{s}{s} ", .{ icon_color, prompt_icon, if (icon_color.len > 0) ANSI_RESET else "" });
+    _ = try writer.print("{s}{s}{s} ", .{ wrapped_icon_color, prompt_icon, if (icon_color.len > 0) wrapped_reset else "" });
 
     // TODO(zztkm): プロンプトのフォーマットをカスタムできるようにする
 }
