@@ -40,8 +40,10 @@ const UTF8ConsoleOutput = struct {
 
     fn init() UTF8ConsoleOutput {
         if (builtin.os.tag == .windows) {
-            const original = std.os.windows.kernel32.GetConsoleOutputCP();
-            _ = std.os.windows.kernel32.SetConsoleOutputCP(65001);
+            const GetConsoleOutputCP = @extern(c_uint, .{ .name = "GetConsoleOutputCP", .library = "kernel32" });
+            const SetConsoleOutputCP = @extern(c_uint, .{ .name = "SetConsoleOutputCP", .library = "kernel32" });
+            const original = GetConsoleOutputCP();
+            _ = SetConsoleOutputCP(65001);
             return .{ .original = original };
         }
         return .{ .original = {} };
@@ -49,7 +51,8 @@ const UTF8ConsoleOutput = struct {
 
     fn deinit(self: UTF8ConsoleOutput) void {
         if (builtin.os.tag == .windows) {
-            _ = std.os.windows.kernel32.SetConsoleOutputCP(self.original);
+            const SetConsoleOutputCP = @extern(c_uint, .{ .name = "SetConsoleOutputCP", .library = "kernel32" });
+            _ = SetConsoleOutputCP(self.original);
         }
     }
 };
@@ -74,33 +77,30 @@ fn getHostName() ![]const u8 {
     };
 }
 
-fn getCWD(allocator: std.mem.Allocator) ![]const u8 {
-    const cwd = std.fs.cwd();
-    const cwd_path = try cwd.realpathAlloc(allocator, ".");
-    // ホームディレクトリの場合は "~" に置き換える
-    return cwd_path;
+fn getCWD(io: std.Io, allocator: std.mem.Allocator) ![:0]u8 {
+    return try std.process.currentPathAlloc(io, allocator);
 }
 
 /// Git のブランチ名 or タグ名を取得する関数
 // オリジナルのソースコードは以下の URL にあり、MIT ライセンスで公開されている
 // https://github.com/dbushell/zigbar/blob/ee1c5800c4b45a424d3dc1aa4004f0872d984302/src/Git.zig
-fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
-    var env = try std.process.getEnvMap(allocator);
-    defer env.deinit();
-    // git status の出力を英語にするために LC_MESSAGES を C に設定
-    // TODO(zztkm): Windows での動作確認
-    try env.put("LC_MESSAGES", "C");
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+fn getGitBranch(gpa: std.mem.Allocator, io: std.Io, environ_map: *const std.process.Environ.Map) ![]const u8 {
+    // Clone the environment map and add LC_MESSAGES=C
+    var env_clone = try environ_map.clone(gpa);
+    defer env_clone.deinit();
+    try env_clone.put("LC_MESSAGES", "C");
+
+    const result = try std.process.run(gpa, io, .{
         .argv = &.{ "git", "status" },
-        .env_map = &env,
+        .environ_map = &env_clone,
     });
     defer {
-        allocator.free(result.stderr);
-        allocator.free(result.stdout);
+        gpa.free(result.stderr);
+        gpa.free(result.stdout);
     }
-    if (result.term != .Exited) {
-        return error.GitCommandFailed;
+    switch (result.term) {
+        .exited => {},
+        else => return error.GitCommandFailed,
     }
 
     // Iterate stdout lines
@@ -108,60 +108,38 @@ fn getGitBranch(allocator: std.mem.Allocator) ![]const u8 {
     while (lines.next()) |line| {
         if (std.mem.startsWith(u8, line, "On branch ")) {
             if (line.len >= 10) {
-                const branch = try std.mem.Allocator.dupe(allocator, u8, line[10..]); // Skip "On branch "
+                const branch = try std.mem.Allocator.dupe(gpa, u8, line[10..]); // Skip "On branch "
                 return branch;
-            }
-            if (line.len >= 17) {
-                const tag = try std.mem.Allocator.dupe(allocator, u8, line[17..]); // Skip "HEAD detached at "
-                return tag;
             }
         }
         if (std.mem.startsWith(u8, line, "HEAD detached at ")) {
-            const tag = try std.mem.Allocator.dupe(allocator, u8, line[17..]); // Skip "HEAD detached at "
+            const tag = try std.mem.Allocator.dupe(gpa, u8, line[17..]); // Skip "HEAD detached at "
             return tag;
         }
     }
     return error.GitBranchNotFound;
 }
 
-fn getPosixHome(allocator: std.mem.Allocator) ![]const u8 {
-    const home_path = std.posix.getenv("HOME");
-    if (home_path == null) {
-        return error.HomeNotFound;
-    }
-    if (home_path) |path| {
-        // 値が存在する場合 (null でない場合)
-        if (path.len == 0) {
-            // パスが空文字列の場合のエラー処理 (必要であれば)
-            return error.HomeIsEmpty;
-        }
-        return try allocator.dupe(u8, path);
-    } else {
-        return error.HomeNotFound;
-    }
-}
-
-fn getWindowsHome(allocator: std.mem.Allocator) ![]const u8 {
-    const value = try std.process.getEnvVarOwned(allocator, "USERPROFILE");
-    defer allocator.free(value);
-    return try std.mem.Allocator.dupe(allocator, u8, value);
-}
-
-fn getHome(allocator: std.mem.Allocator) ![]const u8 {
+fn getHome(allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) ![]const u8 {
     return switch (builtin.os.tag) {
-        .windows => getWindowsHome(allocator),
-        .linux => getPosixHome(allocator),
-        .macos => getPosixHome(allocator),
+        .windows => {
+            const value = environ_map.get("USERPROFILE") orelse return error.HomeNotFound;
+            return try allocator.dupe(u8, value);
+        },
+        .linux, .macos => {
+            const value = environ_map.get("HOME") orelse return error.HomeNotFound;
+            if (value.len == 0) return error.HomeIsEmpty;
+            return try allocator.dupe(u8, value);
+        },
         else => error.NotImplemented,
     };
 }
 
-fn getPromptIcon(allocator: std.mem.Allocator) ![]const u8 {
-    return switch (builtin.os.tag) {
-        .windows => std.process.getEnvVarOwned(allocator, "ZPROMPT_ICON") catch try allocator.dupe(u8, DEFAULT_PROMPT_ICON),
-        .linux, .macos => try allocator.dupe(u8, std.posix.getenv("ZPROMPT_ICON") orelse DEFAULT_PROMPT_ICON),
-        else => try allocator.dupe(u8, DEFAULT_PROMPT_ICON),
-    };
+fn getPromptIcon(allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) ![]const u8 {
+    if (environ_map.get("ZPROMPT_ICON")) |icon| {
+        return try allocator.dupe(u8, icon);
+    }
+    return try allocator.dupe(u8, DEFAULT_PROMPT_ICON);
 }
 
 fn parseColorName(name: []const u8) ?[]const u8 {
@@ -190,18 +168,8 @@ fn parseColorName(name: []const u8) ?[]const u8 {
     return null;
 }
 
-fn getColor(allocator: std.mem.Allocator, env_var: []const u8) ![]const u8 {
-    const color_value = switch (builtin.os.tag) {
-        .windows => std.process.getEnvVarOwned(allocator, env_var) catch return try allocator.dupe(u8, ""),
-        .linux, .macos => blk: {
-            if (std.posix.getenv(env_var)) |value| {
-                break :blk try allocator.dupe(u8, value);
-            }
-            return try allocator.dupe(u8, "");
-        },
-        else => return try allocator.dupe(u8, ""),
-    };
-    defer allocator.free(color_value);
+fn getColor(allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map, env_var: []const u8) ![]const u8 {
+    const color_value = environ_map.get(env_var) orelse return try allocator.dupe(u8, "");
 
     // Check if it's a color name
     if (parseColorName(color_value)) |color_code| {
@@ -212,16 +180,16 @@ fn getColor(allocator: std.mem.Allocator, env_var: []const u8) ![]const u8 {
     return try allocator.dupe(u8, color_value);
 }
 
-fn getDirectoryColor(allocator: std.mem.Allocator) ![]const u8 {
-    return getColor(allocator, "ZPROMPT_DIR_COLOR");
+fn getDirectoryColor(allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) ![]const u8 {
+    return getColor(allocator, environ_map, "ZPROMPT_DIR_COLOR");
 }
 
-fn getGitColor(allocator: std.mem.Allocator) ![]const u8 {
-    return getColor(allocator, "ZPROMPT_GIT_COLOR");
+fn getGitColor(allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) ![]const u8 {
+    return getColor(allocator, environ_map, "ZPROMPT_GIT_COLOR");
 }
 
-fn getIconColor(allocator: std.mem.Allocator) ![]const u8 {
-    return getColor(allocator, "ZPROMPT_ICON_COLOR");
+fn getIconColor(allocator: std.mem.Allocator, environ_map: *const std.process.Environ.Map) ![]const u8 {
+    return getColor(allocator, environ_map, "ZPROMPT_ICON_COLOR");
 }
 
 /// zsh用のエスケープシーケンスラッパー関数
@@ -233,38 +201,34 @@ fn wrapForZsh(allocator: std.mem.Allocator, escape_seq: []const u8) ![]const u8 
     return try std.fmt.allocPrint(allocator, "%{{{s}%}}", .{escape_seq});
 }
 
-pub fn main() !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    const allocator, const is_debug = a: {
-        break :a switch (builtin.mode) {
-            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-        };
-    };
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
+    const environ_map = init.environ_map;
 
     // Windows のコンソールで UTF-8 を使うための設定
     const cp_out = UTF8ConsoleOutput.init();
     defer cp_out.deinit();
 
-    const writer = std.io.getStdOut().writer();
+    // Stdout writer setup
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
     // TODO(zztkm): メモリ管理がよくわかっていないので、あとで調べる
     // 今は main 関数内で defer で allocator.free しているので、特にメモリリークが発生することはなさそうだけど
     // これで良いのかわかってない
-    const home = getHome(allocator) catch "";
+    const home = getHome(allocator, environ_map) catch "";
     defer allocator.free(home);
-    const cwd = getCWD(allocator) catch "";
+    const cwd = getCWD(io, allocator) catch "";
     defer allocator.free(cwd);
 
     // Get colors for each component
-    const dir_color = try getDirectoryColor(allocator);
+    const dir_color = try getDirectoryColor(allocator, environ_map);
     defer allocator.free(dir_color);
-    const git_color = try getGitColor(allocator);
+    const git_color = try getGitColor(allocator, environ_map);
     defer allocator.free(git_color);
-    const icon_color = try getIconColor(allocator);
+    const icon_color = try getIconColor(allocator, environ_map);
     defer allocator.free(icon_color);
 
     // Wrap colors for zsh
@@ -280,22 +244,25 @@ pub fn main() !void {
     if (cwd.len != 0) {
         // cwd の先頭が home と一致する場合は "~" に置き換える
         if (std.mem.startsWith(u8, cwd, home)) {
-            _ = try writer.print("{s}~{s}{s} ", .{ wrapped_dir_color, cwd[home.len..], if (dir_color.len > 0) wrapped_reset else "" });
+            try stdout.print("{s}~{s}{s} ", .{ wrapped_dir_color, cwd[home.len..], if (dir_color.len > 0) wrapped_reset else "" });
         } else {
-            _ = try writer.print("{s}{s}{s} ", .{ wrapped_dir_color, cwd, if (dir_color.len > 0) wrapped_reset else "" });
+            try stdout.print("{s}{s}{s} ", .{ wrapped_dir_color, cwd, if (dir_color.len > 0) wrapped_reset else "" });
         }
     }
 
-    const git_branch = getGitBranch(allocator) catch "";
+    const git_branch = getGitBranch(allocator, io, environ_map) catch "";
     defer allocator.free(git_branch);
     if (git_branch.len != 0) {
-        _ = try writer.print("{s}({s}){s} ", .{ wrapped_git_color, git_branch, if (git_color.len > 0) wrapped_reset else "" });
+        try stdout.print("{s}({s}){s} ", .{ wrapped_git_color, git_branch, if (git_color.len > 0) wrapped_reset else "" });
     }
 
     // プロンプトアイコンを環境変数 ZPROMPT_ICON から取得 (デフォルト: 🦀)
-    const prompt_icon = try getPromptIcon(allocator);
+    const prompt_icon = try getPromptIcon(allocator, environ_map);
     defer allocator.free(prompt_icon);
-    _ = try writer.print("{s}{s}{s} ", .{ wrapped_icon_color, prompt_icon, if (icon_color.len > 0) wrapped_reset else "" });
+    try stdout.print("{s}{s}{s} ", .{ wrapped_icon_color, prompt_icon, if (icon_color.len > 0) wrapped_reset else "" });
+
+    // Flush stdout
+    try stdout.flush();
 
     // TODO(zztkm): プロンプトのフォーマットをカスタムできるようにする
 }
